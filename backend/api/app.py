@@ -20,6 +20,7 @@ def create_app():
              "http://localhost:3000",    # React dev server
              "http://localhost:5173",    # Vite dev server
              "http://localhost:4173",    # Vite preview
+             "http://localhost",         # Docker frontend
              "https://app.salesdispatcher.com"  # Replace with your actual domain
          ],
          allow_headers=["Content-Type", "Authorization"],
