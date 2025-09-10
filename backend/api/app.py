@@ -20,7 +20,8 @@ def create_app():
              "http://localhost:3000",    # React dev server
              "http://localhost:5173",    # Vite dev server
              "http://localhost:4173",    # Vite preview
-             "https://app.salesdispatcher.com"  # Replace with your actual domain
+             "https://app.salesdispatcher.com",  # Replace with your actual domain
+             "*"  # Allow all origins for external booking form
          ],
          allow_headers=["Content-Type", "Authorization"],
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
