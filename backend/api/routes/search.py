@@ -33,7 +33,8 @@ def search_agents():
             WHERE fa.agentId NOT IN (
                 SELECT b.agentId
                 FROM bookings b
-                WHERE b.booking_date = %s
+                WHERE b.agentId IS NOT NULL
+                  AND b.booking_date = %s
                   AND b.booking_time BETWEEN SUBTIME(%s, %s) AND ADDTIME(%s, %s)
             )
             ORDER BY distance ASC;

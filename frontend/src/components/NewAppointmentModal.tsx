@@ -13,8 +13,7 @@ import {
 import Grid from '@mui/material/Grid';
 import { Close } from "@mui/icons-material";
 import { findLatLong } from "../api/location_conversion";
-import { createBooking, searchAgents } from "../api/crud";
-import AgentSelector from "./AgentSelector";
+import { createBooking } from "../api/crud";
 import PhoneInput from "./PhoneInput";
 
 interface Props {
@@ -22,12 +21,6 @@ interface Props {
   onClose: () => void;
   onSave: () => void; // Callback to refresh bookings after saving
   onLogout: () => void;
-}
-
-interface Agent {
-  distance: string;
-  agentId: string;
-  name: string;
 }
 
 export default function NewAppointmentModal({ isOpen, onClose, onSave, onLogout }: Props) {
@@ -43,14 +36,11 @@ export default function NewAppointmentModal({ isOpen, onClose, onSave, onLogout 
     country: "",    
     date: "",
     time: "",
-    rep: "",
     type: "Roof Replacement",
   });
 
   const [latLon, setLatLon] = useState<{ lat: number | null, lon: number | null }>({ lat: null, lon: null });
   const [phoneValid, setPhoneValid] = useState(false);
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [loadingAgents, setLoadingAgents] = useState(false);
 
   // ensure HH:MM:SS
   const formatTime = (time: string) => {
@@ -74,6 +64,19 @@ export default function NewAppointmentModal({ isOpen, onClose, onSave, onLogout 
       return;
     }
 
+    // Get coordinates before saving
+    let coordinates = latLon;
+    if (!latLon.lat || !latLon.lon) {
+      coordinates = await getLatLon();
+      setLatLon(coordinates); // Update state for future use
+    }
+
+    // Check if coordinates are still null
+    if (!coordinates.lat || !coordinates.lon) {
+      alert("Unable to get location coordinates. Please check your address and try again.");
+      return;
+    }
+
     // Transform flat form into backend format
     const payload = {
       customer: {
@@ -82,8 +85,8 @@ export default function NewAppointmentModal({ isOpen, onClose, onSave, onLogout 
         phone: form.phone,
       },
       location: {
-        latitude: latLon.lat,
-        longitude: latLon.lon,
+        latitude: coordinates.lat,
+        longitude: coordinates.lon,
         postal_code: form.postal_code,
         street_name: form.street_name,
         street_number: form.street_number,
@@ -92,7 +95,6 @@ export default function NewAppointmentModal({ isOpen, onClose, onSave, onLogout 
         country: form.country,
       },
       booking: {
-        agentId: Number(form.rep),
         booking_date: form.date,
         booking_time: formatTime(form.time),
       },
@@ -118,38 +120,17 @@ export default function NewAppointmentModal({ isOpen, onClose, onSave, onLogout 
     }
   };
 
-  const handleSearchAgents = async () => {
-    setLoadingAgents(true);
-    console.log("Searching...")
+  const getLatLon = async () => {
     try {
-      // First get lat/long
-      const { lat, lon } = await findLatLong({street_number: form.street_number, street_name: form.street_name, postal_code: form.postal_code })
-
-      if (lat === null || lon === null){
-        console.error("Could not find lat/lon for address.")
-        setLatLon({ lat: null, lon: null });
-        setAgents([])
-      } else{
-        setLatLon({ lat, lon });
-        const data = await searchAgents({
-          latitude: lat.toString(),
-          longitude: lon.toString(),
-          booking_date: form.date,
-          booking_time: formatTime(form.time),
-        });
-        setAgents(data);
-      }      
+      const { lat, lon } = await findLatLong({
+        street_number: form.street_number, 
+        street_name: form.street_name, 
+        postal_code: form.postal_code 
+      });
+      return { lat, lon };
     } catch (err) {
-      console.error("Error fetching agents:", err);
-      const errorMessage = (err as Error).message || "Error searching agents";
-      
-      if (errorMessage.includes("Authentication required")) {
-        onLogout();
-      } else {
-        alert(errorMessage);
-      }
-    } finally {
-      setLoadingAgents(false);
+      console.error("Error getting coordinates:", err);
+      return { lat: null, lon: null };
     }
   };
 
@@ -316,19 +297,6 @@ export default function NewAppointmentModal({ isOpen, onClose, onSave, onLogout 
               />
             </Grid>
 
-            {/* Agent Selection */}
-            <Grid size={{ xs: 12 }}>
-              <Box display="flex" alignItems="flex-end" gap={2}>
-                <AgentSelector
-                  agents={agents}
-                  selectedRep={form.rep}
-                  loading={loadingAgents}
-                  onChange={(agentId: string) => setForm(prev => ({ ...prev, rep: agentId }))}
-                  onSearch={handleSearchAgents}
-                  disabledSearch={!form.postal_code || !form.date || !form.time}
-                />
-              </Box>
-            </Grid>
           </Grid>
         </DialogContent>
 

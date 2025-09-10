@@ -1,13 +1,15 @@
 import { useState, useMemo, useCallback, memo } from "react";
 import type { Booking } from "../api/crud";
 import { Card, CardContent, Typography, Chip, Box, Divider, Select, MenuItem, FormControl, TextField, Button, InputLabel, IconButton, Collapse } from "@mui/material";
-import { AccessTime, LocationOn, Person, Assignment, Add, Remove } from "@mui/icons-material";
+import { AccessTime, LocationOn, Assignment, Add, Remove } from "@mui/icons-material";
+import AgentAssignmentDropdown from "./AgentAssignmentDropdown";
 
 interface Props {
   appt: Booking;
   addressText: string;
   onStatusChange?: (bookingId: number, status: string) => void;
   onDispositionSave?: (bookingId: number, dispositionType: string, note: string) => void;
+  onAgentAssign?: (bookingId: number, agentId: string) => void;
 }
 
 // Constants
@@ -82,7 +84,7 @@ const DispositionNote = memo(({ note, expanded }: { note: string; expanded: bool
   </Collapse>
 ));
 
-const AppointmentCard = memo(function AppointmentCard({ appt, addressText, onStatusChange, onDispositionSave }: Props) {
+const AppointmentCard = memo(function AppointmentCard({ appt, addressText, onStatusChange, onDispositionSave, onAgentAssign }: Props) {
   // State management
   const [note, setNote] = useState("");
   const [selectedDisposition, setSelectedDisposition] = useState(appt.disposition_code || "");
@@ -137,18 +139,19 @@ const AppointmentCard = memo(function AppointmentCard({ appt, addressText, onSta
 
   const renderBasicInfo = () => (
     <>
-      {appt.agent_name && (
-        <InfoRow icon={<Person sx={{ fontSize: 16, color: 'text.secondary' }} />}>
-          <Typography variant="body2" color="text.secondary">
-            <Typography component="span" fontWeight="600">
-              Assigned to:
-            </Typography>{' '}
-            <Typography component="span" color="text.primary" fontWeight="500">
-              {appt.agent_name}
-            </Typography>
-          </Typography>
-        </InfoRow>
-      )}
+      <InfoRow icon={<></>}>
+        <AgentAssignmentDropdown
+          bookingId={appt.bookingId}
+          currentAgentName={appt.agent_name}
+          customerAddress={addressText}
+          customerLatitude={appt.customer_latitude}
+          customerLongitude={appt.customer_longitude}
+          bookingDate={appt.booking_date}
+          bookingTime={appt.booking_time}
+          onAssignAgent={onAgentAssign || (() => {})}
+          disabled={!onAgentAssign}
+        />
+      </InfoRow>
 
       <InfoRow icon={<LocationOn sx={{ fontSize: 16, color: 'text.secondary', mt: 0.1 }} />}>
         <Typography 

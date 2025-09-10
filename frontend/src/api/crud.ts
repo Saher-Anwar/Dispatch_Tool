@@ -7,6 +7,8 @@ export interface Booking {
   booking_date: string; // YYYY-MM-DD
   booking_time: string; // HH:MM:SS
   customer_address: string | null;
+  customer_latitude: number | null;
+  customer_longitude: number | null;
   status: string;
   customer_name: string;
   agent_name: string | null;
@@ -129,4 +131,25 @@ export async function searchAgents(params: {
 
   const result = await res.json();
   return result.success ? result.data : result;
+}
+
+export async function assignAgentToBooking(bookingId: number, agentId: string): Promise<Booking> {
+  const res = await authenticatedFetch(`${BASE_URL}/bookings/${bookingId}/assign`, {
+    method: "PUT",
+    body: JSON.stringify({ agentId }),
+  });
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      throw new Error("Authentication required");
+    }
+    if (res.status === 403) {
+      throw new Error("Access denied");
+    }
+    const errorData = await res.json();
+    throw new Error(errorData.error || "Failed to assign agent to booking");
+  }
+
+  const data = await res.json();
+  return data.data;
 }

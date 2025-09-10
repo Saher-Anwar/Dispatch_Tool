@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS customers (
 CREATE TABLE IF NOT EXISTS bookings (
     bookingId INT AUTO_INCREMENT PRIMARY KEY,
     customerId INT NOT NULL,
-    agentId INT,
+    agentId INT DEFAULT NULL, -- NULL allows unassigned appointments
     dispositionId INT,
     booking_date DATE NOT NULL,
     booking_time TIME NOT NULL,
@@ -81,7 +81,9 @@ CREATE TABLE IF NOT EXISTS bookings (
     created_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (customerId) REFERENCES customers(customerId) ON DELETE CASCADE,
-    FOREIGN KEY (agentId) REFERENCES field_agents(agentId) ON DELETE SET NULL
+    FOREIGN KEY (agentId) REFERENCES field_agents(agentId) ON DELETE SET NULL,
+    INDEX idx_bookings_agent (agentId), -- Index for agent queries
+    INDEX idx_bookings_date_time (booking_date, booking_time) -- Index for date/time queries
 );
 
 -- Lookup table of possible dispositions
@@ -107,7 +109,10 @@ INSERT INTO locations (latitude, longitude, postal_code, city, state_province, c
 VALUES
 (26.1936248, -98.2118124, '78502', 'McAllen', 'Texas', 'USA', 'Broadway', '1'),
 (26.3237612, -98.1369012, '78542', 'Edinburg', 'Texas', 'USA', 'Sunset Blvd', '101'),
-(33.1811789, -96.6291685, '75069', 'McKinney', 'Texas', 'USA', 'Bay Street', '100');
+(33.1811789, -96.6291685, '75069', 'McKinney', 'Texas', 'USA', 'Bay Street', '100'),
+(44.6488, -63.5752, 'B3H 3C3', 'Halifax', 'Nova Scotia', 'Canada', 'Spring Garden Road', '5475'),
+(44.6820, -63.7443, 'B3L 4P1', 'Halifax', 'Nova Scotia', 'Canada', 'Lacewood Drive', '200'),
+(43.6532, -79.3832, 'M5G 2C2', 'Toronto', 'Ontario', 'Canada', 'Yonge Street', '100');
 
 -- Sample Dispatchers
 INSERT INTO dispatchers (`name`, email, password, phone, location_id)
@@ -121,7 +126,12 @@ VALUES
 ('Arthur Garica', 'arthur@triguardroofing.com', 'arthur', '555-1111', 'available', 1),
 ('Jeremy Moreno', 'jeremy@triguardroofing.com', 'jeremy', '555-2222', 'available', 2),
 ('rebecca steward', 'rebecca@triguardroofing.com', 'rebecca', '555-2222', 'available', 3),
-('tester', 'test@example.com', 'tester', '555-6666', 'available', 3);
+('tester', 'test@example.com', 'tester', '555-6666', 'available', 3),
+('Mike Henderson', 'mike@triguardroofing.com', 'mike', '902-555-1111', 'available', 4),
+('Sarah MacDonald', 'sarah@triguardroofing.com', 'sarah', '902-555-2222', 'available', 4),
+('David Thompson', 'david@triguardroofing.com', 'david', '902-555-3333', 'available', 5),
+('Emily Wilson', 'emily@triguardroofing.com', 'emily', '416-555-1111', 'available', 6),
+('James Brown', 'james@triguardroofing.com', 'james', '416-555-2222', 'available', 6);
 
 -- Sample Admin
 INSERT INTO admins (`name`, email, password)

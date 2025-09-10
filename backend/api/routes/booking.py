@@ -124,7 +124,9 @@ def get_all_bookings():
                 l.street_name, ', ', 
                 l.postal_code, ' ', 
                 l.city
-            ) AS customer_address
+            ) AS customer_address,
+            l.latitude AS customer_latitude,
+            l.longitude AS customer_longitude
           FROM bookings b
           JOIN customers c ON b.customerId = c.customerId
           LEFT JOIN field_agents fa ON b.agentId = fa.agentId
@@ -190,7 +192,9 @@ def get_agent_bookings(agent_id):
                   l.street_name, ', ', 
                   l.postal_code, ' ', 
                   l.city
-              ) AS customer_address
+              ) AS customer_address,
+              l.latitude AS customer_latitude,
+              l.longitude AS customer_longitude
           FROM bookings b
           JOIN customers c 
               ON b.customerId = c.customerId
@@ -258,7 +262,9 @@ def get_booking(booking_id):
                         l.street_name, ', ', 
                         l.postal_code, ' ', 
                         l.city
-                    ) AS customer_address
+                    ) AS customer_address,
+                    l.latitude AS customer_latitude,
+                    l.longitude AS customer_longitude
                 FROM bookings b
                 JOIN customers c 
                     ON b.customerId = c.customerId
@@ -296,7 +302,9 @@ def get_booking(booking_id):
                         l.street_name, ', ', 
                         l.postal_code, ' ', 
                         l.city
-                    ) AS customer_address
+                    ) AS customer_address,
+                    l.latitude AS customer_latitude,
+                    l.longitude AS customer_longitude
                 FROM bookings b
                 JOIN customers c ON b.customerId = c.customerId
                 LEFT JOIN field_agents fa ON b.agentId = fa.agentId
@@ -335,6 +343,24 @@ def create_booking():
     """
     try:
         data = request.get_json()
+
+        # Validate required fields
+        if not data:
+            return jsonify({"success": False, "error": "No data received"}), 400
+        
+        if "location" not in data:
+            return jsonify({"success": False, "error": "Missing location data"}), 400
+        
+        if "customer" not in data:
+            return jsonify({"success": False, "error": "Missing customer data"}), 400
+            
+        if "booking" not in data:
+            return jsonify({"success": False, "error": "Missing booking data"}), 400
+
+        # Check if coordinates are missing
+        location = data["location"]
+        if location.get("latitude") is None or location.get("longitude") is None:
+            return jsonify({"success": False, "error": "Missing latitude/longitude coordinates"}), 400
 
         conn = get_connection()
         cursor = conn.cursor(dictionary=True)
@@ -387,40 +413,45 @@ def create_booking():
             ))
             customer_id = cursor.lastrowid
 
-        # Booking insert
+        # Booking insert (agentId can be NULL for unassigned appointments)
+        agent_id = data["booking"].get("agentId")
         cursor.execute("""
             INSERT INTO bookings (agentId, customerId, booking_date, booking_time)
             VALUES (%s,%s,%s,%s)
         """, (
-            data["booking"]["agentId"],
+            agent_id,
             customer_id,
             data["booking"]["booking_date"],
             data["booking"]["booking_time"]
         ))
         booking_id = cursor.lastrowid
 
-        # Fetch agent info
-        cursor.execute("SELECT name, email, phone FROM field_agents WHERE agentId=%s", (data["booking"]["agentId"],))
-        agent = cursor.fetchone()
+        # Fetch agent info (only if agent is assigned)
+        agent = None
+        if agent_id:
+            cursor.execute("SELECT name, email, phone FROM field_agents WHERE agentId=%s", (agent_id,))
+            agent = cursor.fetchone()
 
         conn.commit()
 
         # -------------------- Notifications -------------------- #
-        # Prepare notification data
-        notification_data = {
-            'customer_name': data['customer']['name'],
-            'customer_email': data['customer'].get('email'),
-            'customer_phone': data['customer'].get('phone'),
-            'agent_name': agent['name'],
-            'agent_email': agent.get('email'),
-            'agent_phone': agent.get('phone'),
-            'booking_date': data['booking']['booking_date'],
-            'booking_time': data['booking']['booking_time']
-        }
-        
-        # Send notifications asynchronously
-        notifications = prepare_booking_notifications(notification_data, is_update=False)
-        send_notifications_async(notifications)
+        # Only send notifications if agent is assigned
+        if agent:
+            # Prepare notification data
+            notification_data = {
+                'customer_name': data['customer']['name'],
+                'customer_email': data['customer'].get('email'),
+                'customer_phone': data['customer'].get('phone'),
+                'agent_name': agent['name'],
+                'agent_email': agent.get('email'),
+                'agent_phone': agent.get('phone'),
+                'booking_date': data['booking']['booking_date'],
+                'booking_time': data['booking']['booking_time']
+            }
+            
+            # Send notifications asynchronously
+            notifications = prepare_booking_notifications(notification_data, is_update=False)
+            send_notifications_async(notifications)
 
         # Fetch the created booking with full details
         cursor.execute("""
@@ -436,7 +467,9 @@ def create_booking():
                     l.street_name, ', ', 
                     l.postal_code, ' ', 
                     l.city
-                ) AS customer_address
+                ) AS customer_address,
+                l.latitude AS customer_latitude,
+                l.longitude AS customer_longitude
             FROM bookings b
             JOIN customers c ON b.customerId = c.customerId
             LEFT JOIN field_agents fa ON b.agentId = fa.agentId
@@ -537,7 +570,9 @@ def update_booking(booking_id):
                     l.street_name, ', ', 
                     l.postal_code, ' ', 
                     l.city
-                ) AS customer_address
+                ) AS customer_address,
+                l.latitude AS customer_latitude,
+                l.longitude AS customer_longitude
             FROM bookings b
             JOIN customers c ON b.customerId = c.customerId
             LEFT JOIN field_agents fa ON b.agentId = fa.agentId
@@ -595,6 +630,126 @@ def delete_booking(booking_id):
         return jsonify({
             "success": True,
             "message": f"Booking for {booking['customer_name']} on {booking['booking_date']} deleted successfully"
+        }), 200
+
+    except Exception as e:
+        if 'conn' in locals():
+            conn.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+
+@booking_bp.route("/bookings/<int:booking_id>/assign", methods=["PUT"])
+@require_auth  # Dispatchers and admins can assign agents
+def assign_agent_to_booking(booking_id):
+    """
+    Assign an agent to an unassigned booking.
+    """
+    try:
+        # Only dispatchers and admins can assign agents
+        if request.role == 'field_agent':
+            return jsonify({"success": False, "error": "Access denied"}), 403
+
+        data = request.get_json()
+        agent_id = data.get("agentId")
+
+        if agent_id is None:
+            return jsonify({"success": False, "error": "Missing agentId"}), 400
+
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Verify booking exists
+        cursor.execute("SELECT bookingId FROM bookings WHERE bookingId = %s", (booking_id,))
+        if not cursor.fetchone():
+            return jsonify({"success": False, "error": "Booking not found"}), 404
+
+        agent = None
+        if agent_id == "":
+            # Unassign agent (set to NULL)
+            cursor.execute("""
+                UPDATE bookings SET agentId = NULL WHERE bookingId = %s
+            """, (booking_id,))
+        else:
+            # Verify agent exists for assignment
+            cursor.execute("SELECT agentId, name, email, phone FROM field_agents WHERE agentId = %s", (agent_id,))
+            agent = cursor.fetchone()
+            if not agent:
+                return jsonify({"success": False, "error": "Agent not found"}), 404
+
+            # Assign agent to booking
+            cursor.execute("""
+                UPDATE bookings SET agentId = %s WHERE bookingId = %s
+            """, (agent_id, booking_id))
+
+        # Get booking and customer details for notifications
+        cursor.execute("""
+            SELECT c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
+                   b.booking_date, b.booking_time
+            FROM bookings b
+            JOIN customers c ON b.customerId = c.customerId
+            WHERE b.bookingId = %s
+        """, (booking_id,))
+        booking_details = cursor.fetchone()
+
+        conn.commit()
+
+        # -------------------- Notifications -------------------- #
+        # Send notifications for newly assigned booking (only if agent was assigned, not unassigned)
+        if booking_details and agent:
+            notification_data = {
+                'customer_name': booking_details['customer_name'],
+                'customer_email': booking_details.get('customer_email'),
+                'customer_phone': booking_details.get('customer_phone'),
+                'agent_name': agent['name'],
+                'agent_email': agent.get('email'),
+                'agent_phone': agent.get('phone'),
+                'booking_date': booking_details['booking_date'],
+                'booking_time': booking_details['booking_time']
+            }
+            
+            # Send notifications asynchronously
+            notifications = prepare_booking_notifications(notification_data, is_update=False)
+            send_notifications_async(notifications)
+
+        # Fetch updated booking with full details
+        cursor.execute("""
+            SELECT 
+                b.bookingId, 
+                b.booking_date, 
+                b.booking_time, 
+                b.status,
+                c.name AS customer_name,
+                fa.name AS agent_name,
+                CONCAT(
+                    l.street_number, ' ', 
+                    l.street_name, ', ', 
+                    l.postal_code, ' ', 
+                    l.city
+                ) AS customer_address,
+                l.latitude AS customer_latitude,
+                l.longitude AS customer_longitude
+            FROM bookings b
+            JOIN customers c ON b.customerId = c.customerId
+            LEFT JOIN field_agents fa ON b.agentId = fa.agentId
+            LEFT JOIN locations l ON c.location_id = l.id
+            WHERE b.bookingId = %s
+        """, (booking_id,))
+        
+        updated_booking = cursor.fetchone()
+        serialize_booking_timestamps(updated_booking)
+
+        message = "Agent unassigned from booking successfully" if not agent else f"Agent {agent['name']} assigned to booking successfully"
+        
+        return jsonify({
+            "success": True,
+            "message": message,
+            "data": updated_booking
         }), 200
 
     except Exception as e:

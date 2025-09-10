@@ -5,7 +5,7 @@ import Filters from "../components/Filters";
 import QueueCard from "../components/QueueCard";
 import AppointmentCard from "../components/AppointmentCard";
 import NewAppointmentModal from "../components/NewAppointmentModal";
-import { getAllBookings, type Booking } from "../api/crud";
+import { getAllBookings, assignAgentToBooking, type Booking } from "../api/crud";
 import { useSmartPolling } from "../hooks/useSmartPolling";
 
 interface DispatcherScreenProps {
@@ -41,6 +41,22 @@ export default function DispatcherScreen({ onLogout }: DispatcherScreenProps) {
   const handleModalSave = () => {
     handleModalClose();
     refetch(); // Refresh data after saving
+  };
+
+  const handleAgentAssign = async (bookingId: number, agentId: string) => {
+    try {
+      await assignAgentToBooking(bookingId, agentId);
+      refetch(); // Refresh data after assigning agent
+    } catch (error) {
+      console.error("Error assigning agent:", error);
+      const errorMessage = (error as Error).message || "Failed to assign agent";
+      
+      if (errorMessage.includes("Authentication required")) {
+        onLogout();
+      } else {
+        alert(errorMessage);
+      }
+    }
   };
 
   // Categorize bookings by status
@@ -91,7 +107,8 @@ export default function DispatcherScreen({ onLogout }: DispatcherScreenProps) {
               <AppointmentCard 
                 key={appt.bookingId} 
                 appt={appt}
-                addressText={appt.customer_address ?? ""} />
+                addressText={appt.customer_address ?? ""}
+                onAgentAssign={handleAgentAssign} />
             ))}
           </QueueCard>
 
@@ -104,7 +121,8 @@ export default function DispatcherScreen({ onLogout }: DispatcherScreenProps) {
               <AppointmentCard 
                 key={appt.bookingId} 
                 appt={appt}
-                addressText={appt.customer_address ?? ""} />
+                addressText={appt.customer_address ?? ""}
+                onAgentAssign={handleAgentAssign} />
             ))}
           </QueueCard>
 
@@ -117,7 +135,8 @@ export default function DispatcherScreen({ onLogout }: DispatcherScreenProps) {
               <AppointmentCard 
                 key={appt.bookingId} 
                 appt={appt}
-                addressText={appt.customer_address ?? ""} />
+                addressText={appt.customer_address ?? ""}
+                onAgentAssign={handleAgentAssign} />
             ))}
           </QueueCard>
         </div>
