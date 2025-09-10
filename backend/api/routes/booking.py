@@ -336,7 +336,6 @@ def get_booking(booking_id):
 
 
 @booking_bp.route("/bookings", methods=["POST"])
-@require_dispatcher  # Only dispatchers can create bookings
 def create_booking():
     """
     Create a new booking, inserting location + customer if new.
